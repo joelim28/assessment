@@ -1,9 +1,0 @@
-[0m[[0m[0mdebug[0m] [0m[0mPackaging C:\Users\josephlim\Projects\data-transformation\target\scala-2.12\assessment_2.12-1.0.jar ...[0m
-[0m[[0m[0mdebug[0m] [0m[0mInput file mappings:[0m
-[0m[[0m[0mdebug[0m] [0m[0m	ParquetReader$.class[0m
-[0m[[0m[0mdebug[0m] [0m[0m	  C:\Users\josephlim\Projects\data-transformation\target\scala-2.12\classes\ParquetReader$.class[0m
-[0m[[0m[0mdebug[0m] [0m[0m	ParquetReader$StringImprovements.class[0m
-[0m[[0m[0mdebug[0m] [0m[0m	  C:\Users\josephlim\Projects\data-transformation\target\scala-2.12\classes\ParquetReader$StringImprovements.class[0m
-[0m[[0m[0mdebug[0m] [0m[0m	ParquetReader.class[0m
-[0m[[0m[0mdebug[0m] [0m[0m	  C:\Users\josephlim\Projects\data-transformation\target\scala-2.12\classes\ParquetReader.class[0m
-[0m[[0m[0mdebug[0m] [0m[0mDone packaging.[0m
