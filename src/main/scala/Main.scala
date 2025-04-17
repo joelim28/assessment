@@ -105,46 +105,46 @@ import scala.util.Try
 
   // Function to write RDD to parquet file. 
   // The function will write the target parquet to the specified directory (filePath)
-def writeParquetFile(spark: SparkSession, rdd: RDD[String], schema: StructType, filePath: String, hasHeader: Boolean = true): Unit = {
-  try {
-    // Skip the header row if present
-    val dataRDD = if (hasHeader) rdd.zipWithIndex.filter(_._2 > 0).map(_._1) else rdd
+  def writeParquetFile(spark: SparkSession, rdd: RDD[String], schema: StructType, filePath: String, hasHeader: Boolean = true): Unit = {
+    try {
+      // Skip the header row if present
+      val dataRDD = if (hasHeader) rdd.zipWithIndex.filter(_._2 > 0).map(_._1) else rdd
 
-    // Parse the RDD[String] into RDD[Array[Any]]
-    val parsedRDD = dataRDD.map { line =>
-      val parts = line.split(",") // Assuming CSV format
-      parts.zipWithIndex.map {
-        case (value, index) =>
-          schema(index).dataType match {
-            case StringType => value
-            case IntegerType => value.toIntOption.getOrElse(0)
-            case LongType => value.toLongOption.getOrElse(0L)
-            case DoubleType => value.toDoubleOption.getOrElse(0.0)
-            case BooleanType => value.toBooleanOption.getOrElse(false)
-            case _ => value // Default to string if unknown
-          }
+      // Parse the RDD[String] into RDD[Array[Any]]
+      val parsedRDD = dataRDD.map { line =>
+        val parts = line.split(",") // Assuming CSV format
+        parts.zipWithIndex.map {
+          case (value, index) =>
+            schema(index).dataType match {
+              case StringType => value
+              case IntegerType => value.toIntOption.getOrElse(0)
+              case LongType => value.toLongOption.getOrElse(0L)
+              case DoubleType => value.toDoubleOption.getOrElse(0.0)
+              case BooleanType => value.toBooleanOption.getOrElse(false)
+              case _ => value // Default to string if unknown
+            }
+        }
       }
+
+      // Convert RDD to DataFrame
+      val rowRDD = parsedRDD.map(array => Row(array: _*))
+      val df = spark.createDataFrame(rowRDD, schema)
+  
+      // Write DataFrame to a single Parquet file under the file path directory
+      df.coalesce(1).write.mode("overwrite").parquet(filePath)
+      println(s"Data successfully written to $filePath")
+    } catch {
+      case e: Exception => println(s"An error occurred: ${e.getMessage}")
     }
-
-    // Convert RDD to DataFrame
-    val rowRDD = parsedRDD.map(array => Row(array: _*))
-    val df = spark.createDataFrame(rowRDD, schema)
- 
-    // Write DataFrame to a single Parquet file under the file path directory
-    df.coalesce(1).write.mode("overwrite").parquet(filePath)
-    println(s"Data successfully written to $filePath")
-  } catch {
-    case e: Exception => println(s"An error occurred: ${e.getMessage}")
   }
-}
 
-// Helper methods for safe parsing
-implicit class StringImprovements(val s: String) {
-  def toIntOption: Option[Int] = Try(s.toInt).toOption
-  def toLongOption: Option[Long] = Try(s.toLong).toOption
-  def toDoubleOption: Option[Double] = Try(s.toDouble).toOption
-  def toBooleanOption: Option[Boolean] = Try(s.toBoolean).toOption
-}
+  // Helper methods for safe parsing
+  implicit class StringImprovements(val s: String) {
+    def toIntOption: Option[Int] = Try(s.toInt).toOption
+    def toLongOption: Option[Long] = Try(s.toLong).toOption
+    def toDoubleOption: Option[Double] = Try(s.toDouble).toOption
+    def toBooleanOption: Option[Boolean] = Try(s.toBoolean).toOption
+  }
 
 
   // Function to filter records based on column name and filter value
@@ -316,4 +316,25 @@ implicit class StringImprovements(val s: String) {
 
     (resultRDD, updatedColumnNames)
   }
+
+  //functions for Distributed Compute II
+  //Leverage on Salting to handle data skewed for transaction file.
+  //Salting involves adding a random value to the key to distribute the data more evenly across partitions.
+  
+  def readParquetFileWithSalting(spark: SparkSession, filePath: String): (RDD[String], Seq[String]) = {
+    val df = spark.read.parquet(filePath)
+    val columnNames = df.columns.toSeq
+
+    // Add a salt column to the DataFrame
+    val saltedDF = df.withColumn("salt", expr("floor(rand() * 10)"))
+
+    // Repartition the DataFrame based on the salted key
+    val repartitionedDF = saltedDF.repartition(col("geographical_location"), col("salt"))
+
+    // Convert the repartitioned DataFrame to an RDD of comma-separated strings
+    val rdd = repartitionedDF.rdd.map(row => row.mkString(","))
+
+    (rdd, columnNames)
+  }
+
 }
