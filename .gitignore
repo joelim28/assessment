@@ -1,5 +1,49 @@
+
+# Ignore class files
 *.class
+
+# Ignore log files
 *.log
 
-# virtual machine crash logs, see http://www.java.com/en/download/help/error_hotspot.xml
+# Virtual machine crash logs
 hs_err_pid*
+
+# Bloop project directory
+.bloop/
+
+# Metals project directory
+.metals/
+
+# VS Code settings
+.vscode/
+
+# Azurite configuration files
+AzuriteConfig
+__azurite_db_queue__.json
+__azurite_db_queue_extent__.json
+__azurite_db_table__.json
+
+# Build directories
+target/
+project/target/
+project/project/
+parquetFilePath_output/
+
+# Output directories
+parquetFilePath_output/
+
+# Logs and temporary files
+*.tmp
+
+# IntelliJ IDEA
+.idea/
+*.iml
+out/
+
+# MacOS
+.DS_Store
+
+#Documentation
+Documentation/
+Test Scripts/
+ 
