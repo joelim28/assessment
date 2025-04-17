@@ -38,7 +38,13 @@ import scala.util.Try
         .config("spark.network.timeout", "300s")
         .config("spark.executor.heartbeatInterval", "60s")
         .getOrCreate()
-      
+       
+      // Print all configurations
+      spark.conf.getAll.foreach { case (key, value) =>
+        println(s"$key = $value")
+      }
+
+
       try {
       //Extraction of data from source parquet file to rdd.
       //rdd ColNames stores the Column Name from the parquet file
@@ -336,5 +342,8 @@ import scala.util.Try
 
     (rdd, columnNames)
   }
+
+  
+
 
 }

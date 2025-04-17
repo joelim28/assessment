@@ -13,3 +13,32 @@ The design is to be design such that it can be reuse as much as possible with mi
 As this is my first time doing Scala programming and given time constraints, I would have put a configuration file to input all the parameters for each steps such that the same program can be reused with the change of the configuration file.
 
 Note:  For the output, we assume that the geograhical_location should varchar rather than bigint and should be referencing to the Dataset B geograhical_location
+
+Spark Configuration
+fork in run := true
+javaOptions in run ++= Seq(
+  "-Dspark.master=local[*]",
+  "-Dspark.app.name=AssessmentApp",
+  "-Dspark.executor.memory=2g",
+  "-Dspark.driver.memory=1g",
+  "-Dspark.executor.cores=4",
+  "-Dspark.dynamicAllocation.enabled=true",
+  "-Dspark.dynamicAllocation.minExecutors=1",
+  "-Dspark.dynamicAllocation.maxExecutors=10",
+  "-Dspark.sql.autoBroadcastJoinThreshold=10MB",
+  "-Dspark.serializer=org.apache.spark.serializer.KryoSerializer"
+)
+
+Spark version 3.1.2
+Master URL and Application Name:
+spark.master = "local[*]": This sets the master URL to run locally with all available cores. It's useful for development and testing.
+spark.app.name = "AssessmentApp": Naming your application helps in identifying it in the Spark UI and logs.
+Executor and Driver Memory:
+spark.executor.memory = "2g": Allocates 2GB of memory to each executor. This helps in handling larger datasets and complex computations.
+spark.driver.memory = "1g": Allocates 1GB of memory to the driver. This is important for managing the application's metadata and coordination tasks.
+Number of Executor Cores:
+spark.executor.cores = "4": Allocates 4 cores to each executor. More cores can improve parallelism and speed up computations.
+Dynamic Allocation:
+spark.dynamicAllocation.enabled = "true": Enables dynamic allocation to automatically adjust the number of executors based on workload, improving resource utilization.
+spark.dynamicAllocation.minExecutors = "1": Sets the minimum number of executors to 1, ensuring that at least one executor is always available.
+spark.dynamicAllocation.maxExecutors = "10": Sets the maximum number of executors to 10, allowing scalability based on demand.
