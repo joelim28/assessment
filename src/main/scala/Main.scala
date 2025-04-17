@@ -1,3 +1,13 @@
+/*  Author: Joseph Lim
+    Date:  16 April 2025
+    Requirements: Reads Data from Parquet Files where the files can be master & transaction.  
+                  Perform cleaning be removing duplicated records and perform a count group by 
+                  Create Parquet File to store the output.
+                  The number of records (TopN), the Input Files and Output Files shall be a parameter passed into the program
+    Usage:  sbt "run parquetFilePath_master parquetFilePath_transaction parquetFilePath_output TopNRec"
+*/
+
+// Library Section
 import org.apache.spark.sql.{SparkSession, Row}
 import org.apache.spark.sql.types.{StructType, StructField, StringType}
 import org.apache.spark.sql.types._
@@ -7,14 +17,9 @@ import org.apache.log4j.Logger
 import java.nio.file.{Files, Paths}
 import scala.collection.JavaConverters._
 import org.apache.commons.io.FileUtils
-
-import org.apache.spark.sql.{SparkSession, DataFrame}
-import org.apache.spark.sql.functions._
-import org.apache.spark.rdd.RDD
-import org.apache.log4j.Logger
-import java.nio.file.Files
-import org.apache.commons.io.FileUtils
-
+import scala.util.Try
+ 
+// Main Program
   object ParquetReader {
     def main(args: Array[String]): Unit = {
       if (args.length < 4) {
@@ -26,7 +31,7 @@ import org.apache.commons.io.FileUtils
       val parquetFilePath_transaction = args(1)
       val parquetFilePath_output = args(2)
       val TopNRec = args(3).toInt
-
+	  
       val spark = SparkSession.builder
         .appName("Parquet Reader")
         .master("local[*]")
@@ -35,37 +40,63 @@ import org.apache.commons.io.FileUtils
         .getOrCreate()
       
       try {
-        val (rdd_master_stg1, rdd_master_ColNames_stg1) = readParquetFile(spark, parquetFilePath_master)
-        val (rdd_master_stg2, rdd_master_ColNames_stg2) = dedupeRDD(spark, rdd_master_stg1, rdd_master_ColNames_stg1, Seq("geographical_location_oid"))
-        val rdd_master_fnl = filterRecords(rdd_master_stg2, rdd_master_ColNames_stg2, "valid_flag", "Y")
-        val rdd_master_ColNames_fnl = rdd_master_ColNames_stg2
+		//Extraction of data from source parquet file to rdd.
+		//rdd ColNames stores the Column Name from the parquet file
+    val (rdd_master_stg1, rdd_master_ColNames_stg1) = readParquetFile(spark, parquetFilePath_master)
+		val (rdd_trnx_stg1, rdd_trnx_ColNames_stg1) = readParquetFile(spark, parquetFilePath_transaction)
+    
+    // Checking Scripts
+      var recordCount = rdd_master_stg1.count()
+      println(s"Number of Master records: $recordCount")
 
-        val (rdd_trnx_stg1, rdd_trnx_ColNames_stg1) = readParquetFile(spark, parquetFilePath_transaction)
-        val (rdd_trnx_stg2, rdd_trnx_ColNames_stg2) = dedupeRDDFirst(spark, rdd_trnx_stg1, rdd_trnx_ColNames_stg1, Seq("detection_oid"), Seq("timestamp_detected"))
-        val rdd_trnx_fnl = filterRecords(rdd_trnx_stg2, rdd_trnx_ColNames_stg2, "valid_flag", "Y")
-        val rdd_trnx_ColNames_fnl = rdd_trnx_ColNames_stg2
-        showTopRecords(rdd_trnx_fnl, rdd_trnx_ColNames_fnl, 10)
+      recordCount = rdd_trnx_stg1.count()
+      println(s"Number of transaction records: $recordCount")
 
+
+		
+	    //Identify records that have duplicate based on Key Column
+		//Master will be deduped where the last (latest) record by Key Column in the RDD will be considered as the valid (Validity_Flag = "Y").  
+	  val (rdd_master_stg2, rdd_master_ColNames_stg2) = dedupeRDD(spark, rdd_master_stg1, rdd_master_ColNames_stg1, Seq("geographical_location_oid"))
+		//Transaction will be debuped where the first (earliest) record by Key Column in the RDD will be considered as valid (Validity_Flag = "Y")
+    val (rdd_trnx_stg2, rdd_trnx_ColNames_stg2) = dedupeRDDFirst(spark, rdd_trnx_stg1, rdd_trnx_ColNames_stg1, Seq("detection_oid"), Seq("timestamp_detected"))
+    
+    // Checking Scripts
+      recordCount = rdd_master_stg2.count()
+      println(s"Number of master records deduped: $recordCount")
+      recordCount = rdd_trnx_stg2.count()
+      println(s"Number of transaction records deduped: $recordCount")
+      
+    	
+		//Filter only the Valid records (valid_flag = "Y")
+    val rdd_master_fnl = filterRecords(rdd_master_stg2, rdd_master_ColNames_stg2, "valid_flag", "Y")
+		val rdd_trnx_fnl = filterRecords(rdd_trnx_stg2, rdd_trnx_ColNames_stg2, "valid_flag", "Y")
+    val rdd_master_ColNames_fnl = rdd_master_ColNames_stg2 // For consistency of naming convention.
+    val rdd_trnx_ColNames_fnl = rdd_trnx_ColNames_stg2
+ 
+
+		//Combine both Master & Transactions into a single ODS table (keeping all records for transaction in an outer join) so it can be reuse for other compute (grouping by other columns)
+		//Retain the column that should be in the ODS to remove other duplicated columns after join
         val (rdd_ods_stg1, rdd_ods_ColNames_stg1) = leftJoinRDDs(spark, rdd_trnx_fnl, rdd_master_fnl, rdd_trnx_ColNames_fnl, rdd_master_ColNames_fnl, "geographical_location_oid", "geographical_location_oid")
-        showTopRecords(rdd_ods_stg1, rdd_ods_ColNames_stg1, 10)
-
         val (rdd_ods_fnl, rdd_ods_ColNames_fnl) = keepColumns(rdd_ods_stg1, rdd_ods_ColNames_stg1, Seq("geographical_location_oid", "video_camera_oid", "detection_oid", "item_name", "timestamp_detected", "geographical_location"))
-
+		
+		//Perform the logic calculation based on the ODS - count the number of records group by columns.  An additional column "count" will be added to the return RDD
+		//Rank the summarized RDD by descending order.  Have a choice to change to ascending to get the smallest count (least)
         val (countedRecordsRDD, countedColNames) = countRecordsByColumn(rdd_ods_fnl, rdd_ods_ColNames_fnl, Seq("geographical_location", "item_name"))
-
         val (rankedRDD, rankedColNames) = addRankColumn(countedRecordsRDD, countedColNames, Seq("count"), ascending = false)
+		
+		//Generate an RDD to store the Top N Record
         val (rdd_report, rdd_report_ColNames) = rddTopRecords(rankedRDD, rankedColNames, TopNRec)
 
-        
+        //Define the output schema and write the reported data into an output parquet file
+		//Define the schema datatype
         val schema = StructType(Seq(
          StructField("geographical_location", StringType, nullable = true),
          StructField("item_name", StringType, nullable = true),
          StructField("count", IntegerType, nullable = true),
          StructField("rank", IntegerType, nullable = true)
         ))
-
-        writeParquetFile(spark, rdd_report, schema, "parquetFilePath_output")
-  //        writeParquetFile(spark, rdd_report, rdd_report_ColNames, parquetFilePath_output)
+        writeParquetFile(spark, rdd_report, schema, parquetFilePath_output)
+ 
 
       } catch {
         case e: java.io.FileNotFoundException => println(s"File not found: ${e.getMessage}")
@@ -75,9 +106,12 @@ import org.apache.commons.io.FileUtils
         spark.stop()
       }
     }
-    // Other functions remain unchanged
-   
+
+  // The following section are the functions used in the main program.
+
+  // Parquet File Management
   // Function to read Parquet file and convert to RDD, returning column names as well
+  // The function will read the source parquet file path & name and return the RDD & Column Names
   def readParquetFile(spark: SparkSession, filePath: String): (RDD[String], Seq[String]) = {
     val df = spark.read.parquet(filePath)
     val columnNames = df.columns.toSeq
@@ -85,8 +119,10 @@ import org.apache.commons.io.FileUtils
     (rdd, columnNames)
   }
 
- // Function to write RDD to parquet file. 
-  def writeParquetFile(spark: SparkSession, rdd: RDD[String], schema: StructType, filePath: String, hasHeader: Boolean = true): Unit = {
+  // Function to write RDD to parquet file. 
+  // The function will write the target parquet to the specified directory (filePath)
+def writeParquetFile(spark: SparkSession, rdd: RDD[String], schema: StructType, filePath: String, hasHeader: Boolean = true): Unit = {
+  try {
     // Skip the header row if present
     val dataRDD = if (hasHeader) rdd.zipWithIndex.filter(_._2 > 0).map(_._1) else rdd
 
@@ -109,28 +145,26 @@ import org.apache.commons.io.FileUtils
     // Convert RDD to DataFrame
     val rowRDD = parsedRDD.map(array => Row(array: _*))
     val df = spark.createDataFrame(rowRDD, schema)
-
-    // Print the DataFrame for debugging
     df.show()
 
-    // Print the schema
-    df.printSchema()
-
-    // Write DataFrame to Parquet
-    df.write.parquet(filePath)
+    // Write DataFrame to a single Parquet file under the file path directory
+    df.coalesce(1).write.mode("overwrite").parquet(filePath)
+    println(s"Data successfully written to $filePath")
+  } catch {
+    case e: Exception => println(s"An error occurred: ${e.getMessage}")
   }
+}
 
-  // Helper methods for safe parsing
-  implicit class StringImprovements(val s: String) {
-    def toIntOption: Option[Int] = scala.util.Try(s.toInt).toOption
-    def toLongOption: Option[Long] = scala.util.Try(s.toLong).toOption
-    def toDoubleOption: Option[Double] = scala.util.Try(s.toDouble).toOption
-    def toBooleanOption: Option[Boolean] = scala.util.Try(s.toBoolean).toOption
-  }
+// Helper methods for safe parsing
+implicit class StringImprovements(val s: String) {
+  def toIntOption: Option[Int] = Try(s.toInt).toOption
+  def toLongOption: Option[Long] = Try(s.toLong).toOption
+  def toDoubleOption: Option[Double] = Try(s.toDouble).toOption
+  def toBooleanOption: Option[Boolean] = Try(s.toBoolean).toOption
+}
 
 
-  
-   // Function to filter records based on column name and filter value
+  // Function to filter records based on column name and filter value
   def filterRecords(rdd: RDD[String], columnNames: Seq[String], columnName: String, filterValue: String): RDD[String] = {
     val columnIndex = columnNames.indexOf(columnName)
     rdd.filter(record => record.split(",")(columnIndex) == filterValue)
@@ -145,14 +179,21 @@ import org.apache.commons.io.FileUtils
     (resultRDD, columnNames)
   }
 
-  
   // Function to display top records from RDD along with header
+  // This is useful for validation purpose or print the records but do not return RDD
   def showTopRecords(rdd: RDD[String], columnNames: Seq[String], numRecords: Int): Unit = {
     println(columnNames.mkString(","))
     rdd.take(numRecords).foreach(println)
   }
 
-  // Function to deduplicate RDD based on key column names without sorting
+  /* Function to deduplicate RDD based on key column names without sorting
+     The function will take in the RDD, ColumnName, Key Column Name as the parameter for identifying duplicates
+     A new column (valid_flag) will be returned for each record based on the Key Column as follows:
+       "X" for all earlier rows if there are identically duplicated
+       "N" for all earlier rows if there are not identically duplicated
+       "Y" if there are no duplicates or the lastest record if duplicated
+     It will be useful to identify and send "N" to exception to investigate for new duplicated records scenario 
+  */
   def dedupeRDD(spark: SparkSession, rdd: RDD[String], columnNames: Seq[String], keyNames: Seq[String]): (RDD[String], Seq[String]) = {
     val keyIndices = keyNames.map(name => columnNames.indexOf(name))
     val dedupedRDD = rdd.map(record => {
@@ -171,7 +212,14 @@ import org.apache.commons.io.FileUtils
     (dedupedRDD, updatedColumnNames)
   }
 
-  // Function to deduplicate RDD based on key column names, keeping the first occurrence based on sorting sortColumnNames ascending
+  /* Function to deduplicate RDD based on key column names, keeping the first occurrence based on sorting sortColumnNames ascending
+     The function will take in the RDD, ColumnName, Key Column Name, sort Column Name as the parameter for identifying duplicates
+     A new column (valid_flag) will be returned for each record based on the Key Column and sorted ascending based on the sort Column Names as follows:
+       "X" for all later rows if there are identically duplicated 
+       "N" for all later rows if there are not identically duplicated
+       "Y" if there are no duplicates or the earliest record if duplicated
+     It will be useful to identify and send "N" to exception to investigate for new duplicated records scenario 
+  */
   def dedupeRDDFirst(spark: SparkSession, rdd: RDD[String], columnNames: Seq[String], keyNames: Seq[String], sortColumnNames: Seq[String]): (RDD[String], Seq[String]) = {
     val keyIndices = keyNames.map(name => columnNames.indexOf(name))
     val sortColumnIndices = sortColumnNames.map(name => columnNames.indexOf(name))
@@ -193,7 +241,9 @@ import org.apache.commons.io.FileUtils
     (dedupedRDD, updatedColumnNames)
   }
  
-  // Function to perform a left join of 2 RDDs with rdd1 as left (Transaction & Larger) and rdd2 (Master & lesser) as right. Keyname1 and KeyName2 are the linking key columns correspondingly.
+  /* Function to perform a left outer join of 2 RDDs with rdd1 as left (Transaction & Larger) and rdd2 (Master & lesser) as right. 
+	 Keyname1 and KeyName2 are the linking key columns correspondingly.
+  */
   def leftJoinRDDs(spark: SparkSession, rdd1: RDD[String], rdd2: RDD[String], columnNames1: Seq[String], columnNames2: Seq[String], keyName1: String, keyName2: String): (RDD[String], Seq[String]) = {
     // Get the key indices based on the column names
     val keyIndex1 = columnNames1.indexOf(keyName1)
@@ -227,7 +277,7 @@ import org.apache.commons.io.FileUtils
     (resultRDD, updatedColumnNames)
   }
 
-
+  // This function will return the RDD and Column Name based on the selected column name passed in as parameter
   def keepColumns(rdd: RDD[String], columnNames: Seq[String], selectedColumnNames: Seq[String]): (RDD[String], Seq[String]) = {
     // Get the indices of the selected columns based on the column names
     val columnIndices = selectedColumnNames.map(name => columnNames.indexOf(name))
@@ -240,6 +290,7 @@ import org.apache.commons.io.FileUtils
     (resultRDD, selectedColumnNames)
   }
 
+  // This function will count the number of rows in a RDD group by Key Column Name and return a RDD with column Names
   def countRecordsByColumn(rdd: RDD[String], columnNames: Seq[String], keyColumnNames: Seq[String]): (RDD[String], Seq[String]) = {
     // Get the indices of the key columns based on the column names
     val keyIndices = keyColumnNames.map(name => columnNames.indexOf(name))
@@ -256,6 +307,7 @@ import org.apache.commons.io.FileUtils
     (resultRDD, updatedColumnNames)
   }
 
+  // This function will return a RDD, column Names with an additional rank column with the ranking based on the keyColumn to sort the ranking and ascending/descending flag as parameter.
   def addRankColumn(rdd: RDD[String], columnNames: Seq[String], keyColumnNames: Seq[String], ascending: Boolean): (RDD[String], Seq[String]) = {
     // Get the indices of the key columns based on the column names
     val keyIndices = keyColumnNames.map(name => columnNames.indexOf(name))
@@ -282,6 +334,4 @@ import org.apache.commons.io.FileUtils
 
     (resultRDD, updatedColumnNames)
   }
-
-
 }

@@ -1,0 +1,15 @@
+Design considerations
+1.	The data flow was designed modular by function calls.  Each function are parameterized to enable other type of datasets to be used no only pertaining to the given dataset A & dataset B.  
+2.	The deduplication placed a valid flag where:
+	a.	N depict that the records are duplicated but the records are not similar
+	b.	X depict that the records are duplicated but the records are identical
+	c.	Y depict that record is valid for computation and reporting
+3.	Depending on the type of records, the first occurrence or last occurrence will be used as the valid record.  Transaction might take the first or last dependent on the duplicated scenario.  Master takes on the latest to ensure any master updates will be reflected.
+4.	The valid flag X & N can be used for investigation purposes if required on duplication scenarios.
+5.	The creation of a combined clean ODS is to allows other type of analysis if required
+6.	The ranking provides a descending or ascending allows the analysis of either the Top X or Bottom X records
+
+The design is to be design such that it can be reuse as much as possible with minimal code change.  
+As this is my first time doing Scala programming and given time constraints, I would have put a configuration file to input all the parameters for each steps such that the same program can be reused with the change of the configuration file.
+
+Note:  For the output, we assume that the geograhical_location should varchar rather than bigint and should be referencing to the Dataset B geograhical_location

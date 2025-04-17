@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<scalastyle commentFilter="enabled">
+  <name>Scalastyle Config</name>
+
+  <!-- Checks for indentation -->
+  <check level="error" class="org.scalastyle.file.FileTabChecker">
+    <parameters>
+      <parameter name="maxFileLength">1000</parameter>
+    </parameters>
+  </check>
+
+  <!-- Checks for line length -->
+  <check level="warning" class="org.scalastyle.scalariform.MaxLineLengthChecker">
+    <parameters>
+      <parameter name="maxLineLength">120</parameter>
+    </parameters>
+  </check>
+
+  <!-- Checks for spaces around operators -->
+  <check level="warning" class="org.scalastyle.scalariform.SpaceAfterCommentStartChecker" />
+
+  <!-- Checks for method length -->
+  <check level="warning" class="org.scalastyle.scalariform.MethodLengthChecker">
+    <parameters>
+      <parameter name="maxLength">50</parameter>
+    </parameters>
+  </check>
+
+  <!-- Checks for magic numbers -->
+  <check level="warning" class="org.scalastyle.scalariform.MagicNumberChecker" />
+
+  <!-- Checks for cyclomatic complexity -->
+  <check level="warning" class="org.scalastyle.scalariform.CyclomaticComplexityChecker">
+    <parameters>
+      <parameter name="maxComplexity">10</parameter>
+    </parameters>
+  </check>
+
+</scalastyle>

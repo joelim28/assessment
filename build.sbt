@@ -13,8 +13,8 @@ libraryDependencies ++= Seq(
   "org.scala-lang" % "scala-compiler" % scalaVersion.value
 )
 
-// Specify dependency schemes
 libraryDependencySchemes += "org.scala-lang.modules" %% "scala-parser-combinators" % VersionScheme.EarlySemVer
 
-// Override eviction error level
 evictionErrorLevel := Level.Warn
+
+ 
