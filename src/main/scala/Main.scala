@@ -40,62 +40,46 @@ import scala.util.Try
         .getOrCreate()
       
       try {
-		//Extraction of data from source parquet file to rdd.
-		//rdd ColNames stores the Column Name from the parquet file
-    val (rdd_master_stg1, rdd_master_ColNames_stg1) = readParquetFile(spark, parquetFilePath_master)
-		val (rdd_trnx_stg1, rdd_trnx_ColNames_stg1) = readParquetFile(spark, parquetFilePath_transaction)
-    
-    // Checking Scripts
-      var recordCount = rdd_master_stg1.count()
-      println(s"Number of Master records: $recordCount")
-
-      recordCount = rdd_trnx_stg1.count()
-      println(s"Number of transaction records: $recordCount")
-
-
-		
-	    //Identify records that have duplicate based on Key Column
-		//Master will be deduped where the last (latest) record by Key Column in the RDD will be considered as the valid (Validity_Flag = "Y").  
-	  val (rdd_master_stg2, rdd_master_ColNames_stg2) = dedupeRDD(spark, rdd_master_stg1, rdd_master_ColNames_stg1, Seq("geographical_location_oid"))
-		//Transaction will be debuped where the first (earliest) record by Key Column in the RDD will be considered as valid (Validity_Flag = "Y")
-    val (rdd_trnx_stg2, rdd_trnx_ColNames_stg2) = dedupeRDDFirst(spark, rdd_trnx_stg1, rdd_trnx_ColNames_stg1, Seq("detection_oid"), Seq("timestamp_detected"))
-    
-    // Checking Scripts
-      recordCount = rdd_master_stg2.count()
-      println(s"Number of master records deduped: $recordCount")
-      recordCount = rdd_trnx_stg2.count()
-      println(s"Number of transaction records deduped: $recordCount")
+      //Extraction of data from source parquet file to rdd.
+      //rdd ColNames stores the Column Name from the parquet file
+      val (rdd_master_stg1, rdd_master_ColNames_stg1) = readParquetFile(spark, parquetFilePath_master)
+      val (rdd_trnx_stg1, rdd_trnx_ColNames_stg1) = readParquetFile(spark, parquetFilePath_transaction)
       
-    	
-		//Filter only the Valid records (valid_flag = "Y")
-    val rdd_master_fnl = filterRecords(rdd_master_stg2, rdd_master_ColNames_stg2, "valid_flag", "Y")
-		val rdd_trnx_fnl = filterRecords(rdd_trnx_stg2, rdd_trnx_ColNames_stg2, "valid_flag", "Y")
-    val rdd_master_ColNames_fnl = rdd_master_ColNames_stg2 // For consistency of naming convention.
-    val rdd_trnx_ColNames_fnl = rdd_trnx_ColNames_stg2
- 
+      //Identify records that have duplicate based on Key Column
+      //Master will be deduped where the last (latest) record by Key Column in the RDD will be considered as the valid (Validity_Flag = "Y").  
+      val (rdd_master_stg2, rdd_master_ColNames_stg2) = dedupeRDD(spark, rdd_master_stg1, rdd_master_ColNames_stg1, Seq("geographical_location_oid"))
+      //Transaction will be debuped where the first (earliest) record by Key Column in the RDD will be considered as valid (Validity_Flag = "Y")
+      val (rdd_trnx_stg2, rdd_trnx_ColNames_stg2) = dedupeRDDFirst(spark, rdd_trnx_stg1, rdd_trnx_ColNames_stg1, Seq("detection_oid"), Seq("timestamp_detected"))
+      
+      //Filter only the Valid records (valid_flag = "Y")
+      val rdd_master_fnl = filterRecords(rdd_master_stg2, rdd_master_ColNames_stg2, "valid_flag", "Y")
+      val rdd_trnx_fnl = filterRecords(rdd_trnx_stg2, rdd_trnx_ColNames_stg2, "valid_flag", "Y")
+      val rdd_master_ColNames_fnl = rdd_master_ColNames_stg2 // For consistency of naming convention.
+      val rdd_trnx_ColNames_fnl = rdd_trnx_ColNames_stg2
+  
 
-		//Combine both Master & Transactions into a single ODS table (keeping all records for transaction in an outer join) so it can be reuse for other compute (grouping by other columns)
-		//Retain the column that should be in the ODS to remove other duplicated columns after join
-        val (rdd_ods_stg1, rdd_ods_ColNames_stg1) = leftJoinRDDs(spark, rdd_trnx_fnl, rdd_master_fnl, rdd_trnx_ColNames_fnl, rdd_master_ColNames_fnl, "geographical_location_oid", "geographical_location_oid")
-        val (rdd_ods_fnl, rdd_ods_ColNames_fnl) = keepColumns(rdd_ods_stg1, rdd_ods_ColNames_stg1, Seq("geographical_location_oid", "video_camera_oid", "detection_oid", "item_name", "timestamp_detected", "geographical_location"))
-		
-		//Perform the logic calculation based on the ODS - count the number of records group by columns.  An additional column "count" will be added to the return RDD
-		//Rank the summarized RDD by descending order.  Have a choice to change to ascending to get the smallest count (least)
-        val (countedRecordsRDD, countedColNames) = countRecordsByColumn(rdd_ods_fnl, rdd_ods_ColNames_fnl, Seq("geographical_location", "item_name"))
-        val (rankedRDD, rankedColNames) = addRankColumn(countedRecordsRDD, countedColNames, Seq("count"), ascending = false)
-		
-		//Generate an RDD to store the Top N Record
-        val (rdd_report, rdd_report_ColNames) = rddTopRecords(rankedRDD, rankedColNames, TopNRec)
+      //Combine both Master & Transactions into a single ODS table (keeping all records for transaction in an outer join) so it can be reuse for other compute (grouping by other columns)
+      //Retain the column that should be in the ODS to remove other duplicated columns after join
+          val (rdd_ods_stg1, rdd_ods_ColNames_stg1) = leftJoinRDDs(spark, rdd_trnx_fnl, rdd_master_fnl, rdd_trnx_ColNames_fnl, rdd_master_ColNames_fnl, "geographical_location_oid", "geographical_location_oid")
+          val (rdd_ods_fnl, rdd_ods_ColNames_fnl) = keepColumns(rdd_ods_stg1, rdd_ods_ColNames_stg1, Seq("geographical_location_oid", "video_camera_oid", "detection_oid", "item_name", "timestamp_detected", "geographical_location"))
+      
+      //Perform the logic calculation based on the ODS - count the number of records group by columns.  An additional column "count" will be added to the return RDD
+      //Rank the summarized RDD by descending order.  Have a choice to change to ascending to get the smallest count (least)
+          val (countedRecordsRDD, countedColNames) = countRecordsByColumn(rdd_ods_fnl, rdd_ods_ColNames_fnl, Seq("geographical_location", "item_name"))
+          val (rankedRDD, rankedColNames) = addRankColumn(countedRecordsRDD, countedColNames, Seq("count"), ascending = false)
+      
+      //Generate an RDD to store the Top N Record
+          val (rdd_report, rdd_report_ColNames) = rddTopRecords(rankedRDD, rankedColNames, TopNRec)
 
-        //Define the output schema and write the reported data into an output parquet file
-		//Define the schema datatype
-        val schema = StructType(Seq(
-         StructField("geographical_location", StringType, nullable = true),
-         StructField("item_name", StringType, nullable = true),
-         StructField("count", IntegerType, nullable = true),
-         StructField("rank", IntegerType, nullable = true)
-        ))
-        writeParquetFile(spark, rdd_report, schema, parquetFilePath_output)
+          //Define the output schema and write the reported data into an output parquet file
+      //Define the schema datatype
+          val schema = StructType(Seq(
+          StructField("geographical_location", StringType, nullable = true),
+          StructField("item_name", StringType, nullable = true),
+          StructField("count", IntegerType, nullable = true),
+          StructField("rank", IntegerType, nullable = true)
+          ))
+          writeParquetFile(spark, rdd_report, schema, parquetFilePath_output)
  
 
       } catch {
@@ -145,8 +129,7 @@ def writeParquetFile(spark: SparkSession, rdd: RDD[String], schema: StructType, 
     // Convert RDD to DataFrame
     val rowRDD = parsedRDD.map(array => Row(array: _*))
     val df = spark.createDataFrame(rowRDD, schema)
-    df.show()
-
+ 
     // Write DataFrame to a single Parquet file under the file path directory
     df.coalesce(1).write.mode("overwrite").parquet(filePath)
     println(s"Data successfully written to $filePath")
@@ -170,7 +153,6 @@ implicit class StringImprovements(val s: String) {
     rdd.filter(record => record.split(",")(columnIndex) == filterValue)
   }
 
-   
   // Function to display top records from RDD along with header and save the result into a new RDD
   def rddTopRecords(rdd: RDD[String], columnNames: Seq[String], numRecords: Int): (RDD[String], Seq[String]) = {
     val header = columnNames.mkString(",")
