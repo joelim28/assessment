@@ -1,8 +1,0 @@
-[0m[[0m[0mdebug[0m] [0m[0mnot up to date. inChanged = true, force = false[0m
-[0m[[0m[0mdebug[0m] [0m[0mUpdating ...[0m
-[0m[[0m[0mdebug[0m] [0m[0mDone updating [0m
-[0m[[0m[33mwarn[0m] [0m[0mfound version conflict(s) in library dependencies; some are suspected to be binary incompatible:[0m
-[0m[[0m[33mwarn[0m] [0m[0m	* org.scala-lang.modules:scala-parser-combinators_2.12:2.3.0 (early-semver) is selected over {1.1.2, 1.0.6}[0m
-[0m[[0m[33mwarn[0m] [0m[0m	    +- ch.epfl.scala:assessment_2.12:1.0                  (depends on 2.3.0)[0m
-[0m[[0m[33mwarn[0m] [0m[0m	    +- org.scalariform:scalariform_2.12:0.2.0             (depends on 1.0.6)[0m
-[0m[[0m[33mwarn[0m] [0m[0m	    +- org.apache.spark:spark-catalyst_2.12:3.1.2         (depends on 1.1.2)[0m
