@@ -70,16 +70,16 @@ import scala.util.Try
       
       //Generate an RDD to store the Top N Record
           val (rdd_report, rdd_report_ColNames) = rddTopRecords(rankedRDD, rankedColNames, TopNRec)
+          val (rdd_report_fnl, rdd_report_ColNames_fnl) = keepColumns(rdd_report, rdd_report_ColNames, Seq("geographical_location", "item_name", "rank"))
 
           //Define the output schema and write the reported data into an output parquet file
       //Define the schema datatype
           val schema = StructType(Seq(
           StructField("geographical_location", StringType, nullable = true),
           StructField("item_name", StringType, nullable = true),
-          StructField("count", IntegerType, nullable = true),
           StructField("rank", IntegerType, nullable = true)
           ))
-          writeParquetFile(spark, rdd_report, schema, parquetFilePath_output)
+          writeParquetFile(spark, rdd_report_fnl, schema, parquetFilePath_output)
  
 
       } catch {
@@ -320,7 +320,7 @@ import scala.util.Try
   //functions for Distributed Compute II
   //Leverage on Salting to handle data skewed for transaction file.
   //Salting involves adding a random value to the key to distribute the data more evenly across partitions.
-  
+
   def readParquetFileWithSalting(spark: SparkSession, filePath: String): (RDD[String], Seq[String]) = {
     val df = spark.read.parquet(filePath)
     val columnNames = df.columns.toSeq
